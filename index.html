@@ -286,6 +286,7 @@ html.dark .stattitle{color:#d5dde2}
       <button class="btn" id="btnBatch">⌨ 粘贴文本导入</button>
       <button class="btn" id="btnExcel">⇅ Excel</button>
       <button class="btn" id="btnDup">🧹 查重复</button>
+      <button class="btn" id="btnStar">⭐ 只看收藏</button>
     </div>
     <div id="qlist"></div>
   </section>
@@ -314,6 +315,7 @@ html.dark .stattitle{color:#d5dde2}
         </div>
       </div>
       <div class="hint" style="margin-top:10px">选题作答即时判分；答错的题自动进错题本并安排复习；解答题自行核对后点「我答对了 / 我答错了」。</div>
+      <div id="prHistory"></div>
     </div>
     <div id="prSession" style="display:none">
       <div class="statbar">
@@ -550,7 +552,7 @@ function switchView(v){
 $$('.tab').forEach(t=>t.onclick=()=>switchView(t.dataset.view));
 
 /* ---------- 题库渲染 ---------- */
-let filters={kw:'',grade:'',subject:'',type:'',diff:''};
+let filters={kw:'',grade:'',subject:'',type:'',diff:'',star:false};
 function fillSelect(sel,arr,def){sel.innerHTML='<option value="">'+(sel.id==='fType'?'全部题型':sel.id==='fGrade'?'全部年级':sel.id==='fSubject'?'全部学科':sel.id==='fDiff'?'全部难度':'请选择')+'</option>'+arr.map(x=>`<option ${x===def?'selected':''}>${x}</option>`).join('')}
 function initSelects(){
   fillSelect($('#fGrade'),GRADES);fillSelect($('#fSubject'),SUBJECTS);fillSelect($('#fType'),TYPES);fillSelect($('#fDiff'),DIFFS);
@@ -561,7 +563,8 @@ function matchesFilters(q){
   if(filters.grade&&q.grade!==filters.grade)return false;
   if(filters.subject&&q.subject!==filters.subject)return false;
   if(filters.type&&q.type!==filters.type)return false;
-  if(filters.diff&&q.difficulty!==filters.difficulty)return false;
+  if(filters.diff&&q.difficulty!==filters.diff)return false;
+  if(filters.star&&!q.star)return false;
   if(filters.kw){const k=filters.kw.trim().toLowerCase();
     if(k){const hay=[q.stem,q.answer,q.analysis,(q.knowledge||[]).join(' '),(q.tags||[]).join(' '),q.source,q.subject,q.grade].join(' ').toLowerCase();
       if(!hay.includes(k))return false}}
@@ -582,6 +585,7 @@ function qCard(q,inKids){
      <div class="qbtns">
        <button data-act="basket">＋试题篮</button>
        <button data-act="ans">答案</button>
+       <button data-act="star">${q.star?'⭐':'☆'}</button>
        ${q.pageImg?`<button data-act="crop">✂裁图</button>`:''}
        ${inKids?'':(q.wrong?
          `<button data-act="master">✔已掌握</button><button data-act="editwrong">改错因</button>`:
@@ -597,6 +601,7 @@ function qCard(q,inKids){
    ${q.options&&q.options.length?`<div class="opts">${q.options.map(o=>`<span class="opt"><b>${esc(o.k)}.</b> ${fmt(o.t)}</span>`).join('')}</div>`:''}
    ${q.images&&q.images.length?`<div class="qimgs">${q.images.map(s=>`<img src="${s}" data-act="img">`).join('')}</div>`:''}
    <div class="qans" hidden>【答案】${fmt(q.answer)||'（暂无）'}${q.analysis?`<span class="ana">　【解析】${fmt(q.analysis)}</span>`:''}</div>
+   ${q.note?`<div class="qnote">📒 ${fmt(q.note)}</div>`:''}
    ${kids.length&&!inKids?`<details class="kids"><summary>▼ AI变式题（${kids.length}）</summary>${kids.map(k=>qCard(k,true)).join('')}</details>`:''}
   </div>`;
 }
@@ -640,6 +645,7 @@ function openEditModal(id){
     <div class="full" id="eOptsWrap" style="display:none">${optionInputs(q?q.options:[])}</div>
     <div><label>答案</label><input id="eAns" value="${esc(q?q.answer:'')}" placeholder="如 B / 1 / 对"></div>
     <div class="full"><label>解析（可不填）</label><textarea id="eAna" rows="2">${esc(q?q.analysis:'')}</textarea></div>
+    <div class="full"><label>笔记（讲评要点 / 个人心得，可不填）</label><textarea id="eNote" rows="2">${esc(q?(q.note||''):'')}</textarea></div>
     <div class="full"><label>配图（可选，自动压缩保存在本地）</label><input type="file" id="eImg" accept="image/*" multiple>
       <div class="qimgs" id="eImgs"></div></div>
   </div>
@@ -663,7 +669,7 @@ function saveEdit(id){
   const options=$('#eType').value==='选择题'?
     $$('#eOptsWrap .optRow').map(r=>({k:r.dataset.ol,t:r.querySelector('input').value.trim()})).filter(o=>o.t):[];
   const knowledge=$('#eKnow').value.split(/[,，、;；]/).map(s=>s.trim()).filter(Boolean);
-  if(id){Object.assign(db.questions.find(x=>x.id===id),{type:$('#eType').value,grade:$('#eGrade').value,subject:$('#eSubject').value,difficulty:$('#eDiff').value,knowledge,stem,options,answer:$('#eAns').value.trim(),analysis:$('#eAna').value.trim(),images:editImages})}
+  if(id){Object.assign(db.questions.find(x=>x.id===id),{type:$('#eType').value,grade:$('#eGrade').value,subject:$('#eSubject').value,difficulty:$('#eDiff').value,knowledge,stem,options,answer:$('#eAns').value.trim(),analysis:$('#eAna').value.trim(),note:$('#eNote').value.trim(),images:editImages})}
   else{db.questions.push({id:uid(),type:$('#eType').value,grade:$('#eGrade').value,subject:$('#eSubject').value,difficulty:$('#eDiff').value,knowledge,stem,options,answer:$('#eAns').value.trim(),analysis:$('#eAna').value.trim(),images:editImages,source:'手动录入',tags:[],variantOf:null,createdAt:Date.now()})}
   save();renderBank();closeModal();toast('已保存');
 }
@@ -764,12 +770,15 @@ function prRefreshSetup(){
   else if(scope==='filter')n=db.questions.filter(matchesFilters).length;
   else n=db.questions.length;
   $('#prCount').textContent=`当前范围共 ${n} 题可选`;
+  const scopeName={all:'全部题库',wrong:'错题本',due:'今日待复习',filter:'按筛选'};
+  const h=(db.history||[]).slice(0,6);
+  $('#prHistory').innerHTML=h.length?'<div class="stattitle">📜 最近练习</div>'+h.map(x=>`<div class="statrow"><div class="statlabel">${new Date(x.d).toLocaleDateString('zh-CN')}</div><div class="statnum" style="width:auto">${scopeName[x.scope]||x.scope||'练习'} · 答对 ${x.right}/${x.total}</div></div>`).join(''):'';
 }
 $('#prScope').onchange=prRefreshSetup;
 $('#prStart').onclick=()=>{
   const list=prPickIds();
   if(!list.length)return toast('当前范围没有题目');
-  prState={list,i:0,right:0,wrongN:0};
+  prState={list,i:0,right:0,wrongN:0,scope:$('#prScope').value};
   $('#prSetup').style.display='none';$('#prSession').style.display='block';
   renderPrCard();
 };
@@ -839,7 +848,7 @@ function prFinishQuestion(q,right,pick){
   let extra='';
   if(right){ if(q.wrong){const s=Math.min((q.wrong.stage||0)+1,REVIEW_STEPS.length-1);q.wrong.stage=s;q.wrong.nextReview=Date.now()+REVIEW_STEPS[s]*864e5;extra=`<div style="font-weight:400;margin-top:4px">📅 复习计划：已进入第 ${s+1} 轮（${REVIEW_STEPS[s]} 天后复习）</div>`}}
   else{q.stats.w++;const isNew=markWrongNow(q,'刷题答错');extra=`<div style="font-weight:400;margin-top:4px">📌 已自动加入错题本，${REVIEW_STEPS[0]} 天后安排复习</div>`;}
-  vb.innerHTML=`<div class="prVerdict ${right?'ok':'bad'}">${right?'🎉 回答正确！':'❌ 答错了'}${pick?`　你的答案：${esc(pick)}｜正确答案：${esc(q.answer)}`:''}${q.analysis?`<div style="font-weight:400;margin-top:6px">【解析】${fmt(q.analysis)}</div>`:''}${extra}</div>`;
+  vb.innerHTML=`<div class="prVerdict ${right?'ok':'bad'}">${right?'🎉 回答正确！':'❌ 答错了'}${pick?`　你的答案：${esc(pick)}｜正确答案：${esc(q.answer)}`:''}${q.analysis?`<div style="font-weight:400;margin-top:6px">【解析】${fmt(q.analysis)}</div>`:''}${extra}${q.note?`<div style="font-weight:400;margin-top:4px">📒 笔记：${fmt(q.note)}</div>`:''}</div>`;
   save();renderWrong();
   $('#prRight').textContent=stt.right;$('#prWrongN').textContent=stt.wrongN;
   $('#prNav').innerHTML=stt.i<stt.list.length-1
@@ -850,6 +859,9 @@ function prFinishQuestion(q,right,pick){
 }
 function prSummary(){
   const stt=prState,total=stt.list.length;
+  db.history=db.history||[];
+  db.history.unshift({d:Date.now(),scope:stt.scope,total,right:stt.right});
+  db.history=db.history.slice(0,30);save();
   const wrongs=stt.list.filter(q=>q.stats&&q.stats.w);
   $('#prCard').innerHTML=`<div style="text-align:center;padding:20px 0">
     <div style="font-size:42px">${total&&stt.right===total?'🏆':'💪'}</div>
@@ -1488,14 +1500,76 @@ function renderPapers(){
   renderBasket();
   if(currentPaperId){renderPaperDetail();return}
   $('#paperList').style.display='block';$('#paperDetail').style.display='none';
-  $('#paperList').innerHTML=db.papers.length?db.papers.map(p=>`
+  $('#paperList').innerHTML='<div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn primary" id="pWizard">🎯 智能组卷向导</button></div>'
+    +(db.papers.length?db.papers.map(p=>`
     <div class="pcard"><div class="pi"><div class="pt">${esc(p.title)}</div>
     <div class="pm">${p.questionIds.length} 道题 · ${new Date(p.createdAt).toLocaleString('zh-CN')}</div></div>
     <button class="btn primary" data-open="${p.id}">打开</button>
     <button class="btn danger" data-delp="${p.id}">删除</button></div>`).join('')
-    :'<div class="empty">还没有试卷<br><br>在「我的题库」勾题目进试题篮，再点右下角试题篮「生成新试卷」</div>';
+    :'<div class="empty">还没有试卷<br><br>点上方「🎯 智能组卷向导」一键配卷，或在「我的题库」勾题目进试题篮生成</div>');
   $$('#paperList [data-open]').forEach(b=>b.onclick=()=>{currentPaperId=b.dataset.open;renderPapers()});
   $$('#paperList [data-delp]').forEach(b=>b.onclick=()=>{if(confirm('删除该试卷？（不影响题库中的题目）')){db.papers=db.papers.filter(p=>p.id!==b.dataset.delp);save();renderPapers()}});
+  const wz=$('#pWizard');if(wz)wz.onclick=openWizardModal;
+}
+/* ---------- 智能组卷向导（借鉴组卷网/菁优网：按题型结构+分值+难度配比自动选题） ---------- */
+function openWizardModal(){
+  const defs={'选择题':[10,3],'判断题':[0,2],'填空题':[4,4],'解答题':[6,10]};
+  const rows=TYPES.map((t,i)=>`<div class="statrow" style="gap:8px">
+    <span class="badge ${TYPE_CLS[t]||'t1'}" style="width:58px;text-align:center">${t}</span>
+    <input type="number" min="0" max="50" value="${defs[t][0]}" id="wzN${i}" style="width:64px">
+    <span class="hint" style="margin:0">题 ×</span>
+    <input type="number" min="0" max="100" value="${defs[t][1]}" id="wzS${i}" style="width:64px">
+    <span class="hint" style="margin:0">分</span></div>`).join('');
+  openModal(`<h3>🎯 智能组卷向导</h3>
+  <div class="fgrid">
+    <div><label>学科（不限留空）</label><select id="wzSub"><option value="">全部学科</option>${SUBJECTS.map(s=>`<option>${s}</option>`).join('')}</select></div>
+    <div><label>年级（不限留空）</label><select id="wzGrade"><option value="">全部年级</option>${GRADES.map(g=>`<option>${g}</option>`).join('')}</select></div>
+    <div><label>难度偏好</label><select id="wzDiff"><option value="均衡" selected>均衡</option><option value="偏基础">偏基础</option><option value="偏难">偏难</option></select></div>
+    <div class="full"><label>知识点关键词（可留空）</label><input id="wzKp" list="kpList" placeholder="例如：一元一次方程"></div>
+    <div class="full">${rows}</div>
+    <div class="full" style="display:flex;justify-content:flex-end;align-items:center;gap:10px">
+      <span class="status" style="margin:0">预估：<b id="wzTQ">0</b> 题 / <b id="wzTS">0</b> 分</span>
+    </div>
+  </div>
+  <div id="wzPrev"></div>
+  <div class="mfoot"><button class="btn" onclick="closeModal()">取消</button><button class="btn" id="wzRoll">🔄 换一批</button><button class="btn primary" id="wzGo" style="display:none">📄 生成试卷</button></div>`,true);
+  let picked=null;
+  const calc=()=>{let q=0,s=0;TYPES.forEach((t,i)=>{q+=(+$('#wzN'+i).value||0);s+=(+$('#wzN'+i).value||0)*(+$('#wzS'+i).value||0)});$('#wzTQ').textContent=q;$('#wzTS').textContent=s};
+  TYPES.forEach((t,i)=>{$('#wzN'+i).oninput=calc;$('#wzS'+i).oninput=calc});calc();
+  const roll=()=>{
+    picked=wizardPick();
+    if(!picked.totalQ){$('#wzPrev').innerHTML='<div class="status" style="color:#dc2626">当前范围题量不够，请调整条件或数量</div>';$('#wzGo').style.display='none';return}
+    $('#wzPrev').innerHTML=`<div class="stattitle">✓ 已按结构选出 ${picked.totalQ} 题（预估总分 ${picked.totalS} 分）</div>`
+      +picked.result.map(p=>`<div class="statrow"><div class="statlabel">${p.type}</div><div class="statnum" style="width:auto">${p.qs.length} 题 × ${p.score} 分 = ${p.qs.length*p.score} 分</div></div>`).join('')
+      +`<div class="hint">难度已按「${$('#wzDiff').value}」偏好配比；不满意点「换一批」重新抽取。</div>`;
+    $('#wzGo').style.display='inline-block';
+  };
+  $('#wzRoll').onclick=roll;
+  $('#wzGo').onclick=()=>{
+    const ids=[];picked.result.forEach(p=>p.qs.forEach(q=>ids.push(q.id)));
+    const p={id:uid(),title:'智能组卷 '+(new Date().getMonth()+1)+'月'+new Date().getDate()+'日',duration:60,total:picked.totalS,questionIds:ids,createdAt:Date.now()};
+    db.papers.unshift(p);save();closeModal();currentPaperId=p.id;switchView('papers');toast(`智能组卷完成：${picked.totalQ} 题 ${picked.totalS} 分`);
+  };
+  roll();
+}
+function wizardPick(){
+  const ratios={'均衡':{'基础':0.4,'中等':0.4,'较难':0.2},'偏基础':{'基础':0.6,'中等':0.3,'较难':0.1},'偏难':{'基础':0.2,'中等':0.4,'较难':0.4}};
+  const pref=$('#wzDiff').value,subject=$('#wzSub').value,grade=$('#wzGrade').value,kp=$('#wzKp').value.trim();
+  const used=new Set();const result=[];let totalQ=0,totalS=0;
+  TYPES.forEach((t,i)=>{
+    const n=+$('#wzN'+i).value||0,score=+$('#wzS'+i).value||0;
+    if(n<=0)return;
+    const pool=db.questions.filter(q=>q.type===t&&!used.has(q.id)&&(!subject||q.subject===subject)&&(!grade||q.grade===grade)&&(!kp||((q.knowledge||[]).some(k=>k.includes(kp))||q.stem.includes(kp))));
+    const take=(arr,m)=>arr.slice().sort(()=>Math.random()-.5).slice(0,Math.max(0,m));
+    const ra=ratios[pref]||ratios['均衡'];
+    let sel=[];
+    DIFFS.forEach(d=>{sel.push(...take(pool.filter(q=>(q.difficulty||'中等')===d),Math.round(n*(ra[d]||0))))});
+    if(sel.length<n)sel.push(...take(pool.filter(q=>!sel.some(s=>s.id===q.id)),n-sel.length));
+    sel=sel.slice(0,n);
+    sel.forEach(q=>used.add(q.id));
+    if(sel.length){result.push({type:t,score,qs:sel});totalQ+=sel.length;totalS+=sel.length*score}
+  });
+  return {result,totalQ,totalS};
 }
 function paperGroups(p){
   const qs=p.questionIds.map(id=>db.questions.find(q=>q.id===id)).filter(Boolean);
@@ -1656,6 +1730,7 @@ document.addEventListener('click',e=>{
   else if(act==='wrong'||act==='editwrong')openWrongModal(id);
   else if(act==='master')masterQ(id);
   else if(act==='share')shareQ(id);
+  else if(act==='star'){q.star=!q.star;save();renderBank();if(filters.star)renderBank();toast(q.star?'已加入收藏 ⭐':'已取消收藏')}
   else if(act==='crop')openCropDialog(q.pageImg,d=>{(q.images=q.images||[]).push(d);save();renderBank();toast('已裁图并附到题目')});
 });
 $('#lightbox').onclick=()=>$('#lightbox').classList.remove('open');
@@ -1671,6 +1746,7 @@ $('#btnUpload').onclick=openUploadModal;
 $('#btnBatch').onclick=openBatchModal;
 $('#btnExcel').onclick=openExcelModal;
 $('#btnDup').onclick=openDupModal;
+$('#btnStar').onclick=()=>{filters.star=!filters.star;$('#btnStar').classList.toggle('primary',filters.star);renderBank()};
 
 /* ---------- 设置 ---------- */
 function renderSettings(){

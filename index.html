@@ -206,6 +206,26 @@ html.dark .wrongNote{background:#2a1416;border-color:#4a2426;color:#f1a8a8}
 html.dark .sbMsgErr{color:#f87171}
 html.dark .sbMsgOk{color:#4ade80}
 html.dark .optRow .k{color:#8a97a1}
+/* 刷题 */
+.prOpt{display:block;width:100%;text-align:left;border:1px solid #e0e5e2;background:#fff;border-radius:10px;padding:11px 14px;margin-bottom:9px;font-size:14px;line-height:1.6;transition:.15s}
+.prOpt:hover{border-color:#16a34a}
+.prOpt.picked{border-color:#16a34a;background:#f0fdf4;font-weight:600}
+.prOpt.right{border-color:#16a34a;background:#dcfce7;font-weight:700}
+.prOpt.wrongp{border-color:#dc2626;background:#fef2f2}
+.prOpt:disabled{cursor:default;opacity:.85}
+html.dark .prOpt{background:#10161b;border-color:#2a333c;color:#d5dde2}
+html.dark .prOpt.picked{background:#12291c;border-color:#16a34a}
+html.dark .prOpt.right{background:#12291c;border-color:#16a34a}
+html.dark .prOpt.wrongp{background:#2a1214;border-color:#dc2626}
+.prBlank{width:100%;font-size:15px;padding:12px;border:1px solid #d5dbd7;border-radius:10px;margin:6px 0}
+.prVerdict{border-radius:10px;padding:10px 14px;margin:10px 0;font-weight:600}
+.prVerdict.ok{background:#f0fdf4;color:#15803d;border:1px solid #d3f0dd}
+.prVerdict.bad{background:#fef2f2;color:#dc2626;border:1px solid #fecaca}
+html.dark .prVerdict.ok{background:#12241a;color:#4ade80;border-color:#1e3a2a}
+html.dark .prVerdict.bad{background:#2a1214;color:#f87171;border-color:#4a2426}
+/* 分享图片预览 */
+#shareImgBox{text-align:center}
+#shareImgBox img{max-width:100%;border:1px solid #e5eae7;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.1)}
 @media print{
  body>*{display:none!important}
  #printArea{display:block!important}
@@ -225,6 +245,7 @@ html.dark .optRow .k{color:#8a97a1}
   <div class="logo">📚 我的AI题库</div>
   <nav>
     <button class="tab active" data-view="bank">我的题库</button>
+    <button class="tab" data-view="practice">刷题</button>
     <button class="tab" data-view="wrong">错题本</button>
     <button class="tab" data-view="papers">试卷</button>
     <button class="tab" data-view="aigen">AI出题</button>
@@ -250,6 +271,44 @@ html.dark .optRow .k{color:#8a97a1}
       <button class="btn" id="btnBatch">⌨ 粘贴文本导入</button>
     </div>
     <div id="qlist"></div>
+  </section>
+
+  <!-- 刷题 -->
+  <section id="view-practice" class="view">
+    <div id="prSetup">
+      <div class="genform" style="grid-template-columns:repeat(3,1fr)">
+        <div><label>练习范围</label>
+          <select id="prScope">
+            <option value="all">全部题库</option>
+            <option value="wrong">错题本</option>
+            <option value="due">今日待复习</option>
+            <option value="filter">按筛选条件</option>
+          </select>
+        </div>
+        <div><label>题数上限</label>
+          <select id="prLimit"><option>10</option><option selected>20</option><option>30</option><option value="9999">不限</option></select>
+        </div>
+        <div><label>出题顺序</label>
+          <select id="prOrder"><option value="random" selected>随机打乱</option><option value="seq">按库内顺序</option></select>
+        </div>
+        <div class="full" style="display:flex;gap:10px;align-items:center;justify-content:flex-end">
+          <span class="hint" id="prCount" style="margin:0"></span>
+          <button class="btn primary" id="prStart">▶ 开始练习</button>
+        </div>
+      </div>
+      <div class="hint" style="margin-top:10px">选题作答即时判分；答错的题自动进错题本并安排复习；解答题自行核对后点「我答对了 / 我答错了」。</div>
+    </div>
+    <div id="prSession" style="display:none">
+      <div class="statbar">
+        <div class="stat" style="cursor:default"><b id="prPos">1</b><span id="prTotal">/ 20</span></div>
+        <div class="stat" style="cursor:default"><b id="prRight">0</b><span>答对</span></div>
+        <div class="stat" style="cursor:default"><b id="prWrongN">0</b><span>答错</span></div>
+        <div style="flex:1;min-width:120px;display:flex;align-items:center"><div style="height:8px;background:#e5eae7;border-radius:99px;flex:1;overflow:hidden"><div id="prBar" style="height:100%;background:#16a34a;width:0%;transition:.3s"></div></div></div>
+        <button class="btn" id="prQuit">结束练习</button>
+      </div>
+      <div class="qcard" id="prCard"></div>
+      <div class="mfoot" id="prNav"></div>
+    </div>
   </section>
 
   <!-- 错题本 -->
@@ -468,6 +527,7 @@ function switchView(v){
   $$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));
   if(v==='papers')renderPapers();
   if(v==='wrong')renderWrong();
+  if(v==='practice')prRefreshSetup();
 }
 $$('.tab').forEach(t=>t.onclick=()=>switchView(t.dataset.view));
 
@@ -508,7 +568,8 @@ function qCard(q,inKids){
        ${inKids?'':(q.wrong?
          `<button data-act="master">✔已掌握</button><button data-act="editwrong">改错因</button>`:
          `<button data-act="wrong">错题</button>`)}
-       ${inKids?'':`<button data-act="variant">AI变式</button>
+       ${inKids?'':`<button data-act="share">🖼 分享图</button>
+       <button data-act="variant">AI变式</button>
        <button data-act="explain">AI讲题</button>
        <button data-act="edit">编辑</button>
        <button data-act="del" class="warn">删除</button>`}
@@ -607,8 +668,9 @@ function openWrongModal(id){
   <div class="mfoot"><button class="btn" onclick="closeModal()">取消</button><button class="btn primary" id="wSave">确定</button></div>`);
   $('#wSave').onclick=()=>{
     const n=$('#wNote').value.trim();
-    q.wrong={note:n,addedAt:(q.wrong&&q.wrong.addedAt)||Date.now(),times:((q.wrong&&q.wrong.times)||0)+(isNew?1:0)};
-    save();closeModal();renderBank();renderWrong();toast(isNew?'已加入错题本':'已更新错因');
+    markWrongNow(q,n);
+    if(q.wrong.note!==n)q.wrong.note=n;
+    save();closeModal();renderBank();renderWrong();toast(isNew?'已加入错题本（1 天后安排复习）':'已更新错因');
   };
 }
 function masterQ(id){
@@ -618,21 +680,26 @@ function masterQ(id){
 let wrongFilter='';
 function renderWrong(){
   const wrongs=db.questions.filter(q=>q.wrong);
+  const dueN=dueCount();
   const stat={};
   wrongs.forEach(q=>((q.knowledge||[]).length?q.knowledge:['未标注知识点']).forEach(k=>stat[k]=(stat[k]||0)+1));
   const top=Object.entries(stat).sort((a,b)=>b[1]-a[1]).slice(0,12);
   $('#wToolbar').innerHTML=`<span class="chip" style="font-size:13px;padding:5px 12px">共 ${wrongs.length} 道错题</span>
+    ${dueN?`<span class="chip k" style="padding:5px 12px">📅 今日待复习 ${dueN}</span>`:''}
     ${top.map(([k,n])=>`<span class="chip k" style="cursor:pointer;${wrongFilter===k?'outline:2px solid #16a34a':''}" data-wk="${esc(k)}">${esc(k)} ${n}</span>`).join('')}
     <div style="flex:1"></div>
+    ${dueN?`<button class="btn primary" id="wDue">▶ 复习今日到期</button>`:''}
     <button class="btn primary" id="wPaper">🔁 生成重练卷</button>
     <button class="btn" id="wWord">导出错题集 Word</button>
     <button class="btn" id="wPPT">导出错题集 PPT</button>`;
   const list=wrongFilter?wrongs.filter(q=>((q.knowledge||[]).includes(wrongFilter))||(wrongFilter==='未标注知识点'&&!(q.knowledge||[]).length)):wrongs;
-  list.sort((a,b)=>(b.wrong.addedAt||0)-(a.wrong.addedAt||0));
-  $('#wList').innerHTML=list.length?list.map(q=>`<div class="wrongNote">📝 错因：${esc(q.wrong.note)||'（未填）'} · 收录于 ${new Date(q.wrong.addedAt||Date.now()).toLocaleDateString('zh-CN')}${q.wrong.times>1?' · 错过 '+q.wrong.times+' 次':''}</div>`+qCard(q)).join('')
-    :'<div class="empty">错题本是空的<br><br>在题目上点「错题」按钮收录，考前一键生成重练卷</div>';
+  list.sort((a,b)=>(a.wrong.nextReview||0)-(b.wrong.nextReview||0));
+  $('#wList').innerHTML=list.length?list.map(q=>`<div class="wrongNote">📝 错因：${esc(q.wrong.note)||'（未填）'} · ${q.wrong.nextReview<=Date.now()?'<b>📅 今日应复习</b>':'🕑 '+(q.wrong.nextReview?new Date(q.wrong.nextReview).toLocaleDateString('zh-CN')+' 复习':'待安排')} · 收录于 ${new Date(q.wrong.addedAt||Date.now()).toLocaleDateString('zh-CN')}${q.wrong.times>1?' · 错过 '+q.wrong.times+' 次':''}</div>`+qCard(q)).join('')
+    :'<div class="empty">错题本是空的<br><br>在题目上点「错题」按钮收录，或在「刷题」里练习（答错自动收录）</div>';
   ktx($('#wList'));
   $$('#wToolbar [data-wk]').forEach(c=>c.onclick=()=>{wrongFilter=wrongFilter===c.dataset.wk?'':c.dataset.wk;renderWrong()});
+  const wd=$('#wDue');
+  if(wd)wd.onclick=()=>{$('#prScope').value='due';switchView('practice');prRefreshSetup();$('#prStart').click()};
   const wp=$('#wPaper');
   if(wp)wp.onclick=()=>{
     if(!wrongs.length)return toast('错题本是空的');
@@ -652,6 +719,176 @@ function renderWrong(){
   };
 }
 
+/* ---------- 刷题模式（借鉴 Quizlet / 学之思：交互答题即时判分） ---------- */
+const REVIEW_STEPS=[1,2,4,7,15]; // 错题复习间隔（天），借鉴 Anki 间隔复习
+function markWrongNow(q,note){
+  const isNew=!q.wrong;
+  q.wrong={note:note||'',addedAt:(q.wrong&&q.wrong.addedAt)||Date.now(),times:((q.wrong&&q.wrong.times)||0)+(isNew?1:0),stage:0,nextReview:Date.now()+REVIEW_STEPS[0]*864e5};
+  return isNew;
+}
+let prState=null;
+function prPickIds(){
+  const scope=$('#prScope').value,limit=+$('#prLimit').value||20;
+  let pool;
+  if(scope==='wrong')pool=db.questions.filter(q=>q.wrong);
+  else if(scope==='due')pool=db.questions.filter(q=>q.wrong&&q.wrong.nextReview<=Date.now());
+  else if(scope==='filter')pool=db.questions.filter(matchesFilters);
+  else pool=db.questions.slice();
+  if($('#prOrder').value==='random')pool=pool.slice().sort(()=>Math.random()-.5);
+  return pool.slice(0,limit);
+}
+function prRefreshSetup(){
+  const scope=$('#prScope').value;
+  let n;
+  if(scope==='wrong')n=db.questions.filter(q=>q.wrong).length;
+  else if(scope==='due')n=db.questions.filter(q=>q.wrong&&q.wrong.nextReview<=Date.now()).length;
+  else if(scope==='filter')n=db.questions.filter(matchesFilters).length;
+  else n=db.questions.length;
+  $('#prCount').textContent=`当前范围共 ${n} 题可选`;
+}
+$('#prScope').onchange=prRefreshSetup;
+$('#prStart').onclick=()=>{
+  const list=prPickIds();
+  if(!list.length)return toast('当前范围没有题目');
+  prState={list,i:0,right:0,wrongN:0};
+  $('#prSetup').style.display='none';$('#prSession').style.display='block';
+  renderPrCard();
+};
+$('#prQuit').onclick=()=>{
+  if(prState&&(prState.i<prState.list.length)&&!confirm('练习还没结束，确定放弃本次记录？'))return;
+  prState=null;$('#prSession').style.display='none';$('#prSetup').style.display='block';prRefreshSetup();
+};
+function renderPrCard(){
+  const st=prState,q=st.list[st.i];
+  $('#prPos').textContent=st.i+1;$('#prTotal').textContent='/ '+st.list.length;
+  $('#prRight').textContent=st.right;$('#prWrongN').textContent=st.wrongN;
+  $('#prBar').style.width=(st.i/st.list.length*100)+'%';
+  let body=`<div class="qtop"><span class="badge ${TYPE_CLS[q.type]||'t1'}">${esc(q.type)}</span>
+    ${q.grade?`<span class="chip">${esc(q.grade)}</span>`:''}${q.subject?`<span class="chip">${esc(q.subject)}</span>`:''}
+    ${(q.knowledge||[]).map(k=>`<span class="chip k">${esc(k)}</span>`).join('')}</div>
+    <div class="qstem">${fmt(q.stem)}</div>
+    ${q.images&&q.images.length?`<div class="qimgs">${q.images.map(s=>`<img src="${s}">`).join('')}</div>`:''}`;
+  let nav='';
+  if(q.type==='选择题'&&q.options&&q.options.length){
+    body+=`<div style="margin-top:10px">${q.options.map(o=>`<button class="prOpt" data-pk="${esc(o.k)}"><b>${esc(o.k)}.</b> ${fmt(o.t)}</button>`).join('')}</div>`;
+  }else if(q.type==='判断题'){
+    body+=`<div style="margin-top:10px;display:flex;gap:10px"><button class="prOpt" style="flex:1" data-pk="对">✓ 对</button><button class="prOpt" style="flex:1" data-pk="错">✗ 错</button></div>`;
+  }else{
+    body+=`<input class="prBlank" id="prInput" placeholder="${q.type==='填空题'?'在此输入你的答案，对照后自行判分':'解答题：先在纸上作答，再对照答案'}" ${q.type==='解答题'?'disabled':''}>`;
+    nav+=`<button class="btn primary" id="prShow">👁 显示答案核对</button>`;
+  }
+  body+=`<div id="prVerdictBox"></div>`;
+  $('#prCard').innerHTML=body;
+  $('#prNav').innerHTML=nav;
+  $$('#prCard .prOpt').forEach(b=>b.onclick=()=>prJudge(b.dataset.pk,b));
+  const show=$('#prShow');
+  if(show)show.onclick=()=>prSelfGrade(q);
+  ktx($('#prCard'));
+}
+function prRecord(q,right){
+  q.stats=q.stats||{a:0,w:0};q.stats.a++;
+  if(right){st(prState).right++; if(q.wrong){const s=Math.min((q.wrong.stage||0)+1,REVIEW_STEPS.length-1);q.wrong.stage=s;q.wrong.nextReview=Date.now()+REVIEW_STEPS[s]*864e5;}}
+  else{q.stats.w++;prState.wrongN++;markWrongNow(q,'刷题答错');}
+  save();
+}
+function st(s){return s}
+function prJudge(pick,btn){
+  const stt=prState,q=stt.list[stt.i];
+  const ans=String(q.answer||'').trim();
+  const right=pick.toUpperCase()===ans.toUpperCase()||(q.type==='判断题'&&pick===ans);
+  $$('#prCard .prOpt').forEach(b=>{b.disabled=true;
+    if(b.dataset.pk===btn?.dataset?.pk&&btn)b.classList.add(right?'right':'wrongp');
+    if(!right&&b.dataset.pk===ans)b.classList.add('right');
+  });
+  prFinishQuestion(q,right,pick);
+}
+function prSelfGrade(q){
+  const ans=q.answer||'（无答案）';
+  const box=$('#prVerdictBox');
+  box.innerHTML=`<div class="prVerdict ${'ok'}">【参考答案】${fmt(ans)}${q.analysis?`<div style="font-weight:400;margin-top:6px">【解析】${fmt(q.analysis)}</div>`:''}</div>
+  <div style="display:flex;gap:10px"><button class="btn primary" id="prMyR">✔ 我答对了</button><button class="btn danger" id="prMyW">✘ 我答错了</button></div>`;
+  ktx(box);
+  $('#prMyR').onclick=()=>prFinishQuestion(q,true,null);
+  $('#prMyW').onclick=()=>prFinishQuestion(q,false,null);
+}
+function prFinishQuestion(q,right,pick){
+  const stt=prState;
+  $$('#prCard .prOpt').forEach(b=>b.disabled=true);
+  const vb=$('#prVerdictBox');
+  if(right)stt.right++;else stt.wrongN++;
+  q.stats=q.stats||{a:0,w:0};q.stats.a++;
+  let extra='';
+  if(right){ if(q.wrong){const s=Math.min((q.wrong.stage||0)+1,REVIEW_STEPS.length-1);q.wrong.stage=s;q.wrong.nextReview=Date.now()+REVIEW_STEPS[s]*864e5;extra=`<div style="font-weight:400;margin-top:4px">📅 复习计划：已进入第 ${s+1} 轮（${REVIEW_STEPS[s]} 天后复习）</div>`}}
+  else{q.stats.w++;const isNew=markWrongNow(q,'刷题答错');extra=`<div style="font-weight:400;margin-top:4px">📌 已自动加入错题本，${REVIEW_STEPS[0]} 天后安排复习</div>`;}
+  vb.innerHTML=`<div class="prVerdict ${right?'ok':'bad'}">${right?'🎉 回答正确！':'❌ 答错了'}${pick?`　你的答案：${esc(pick)}｜正确答案：${esc(q.answer)}`:''}${q.analysis?`<div style="font-weight:400;margin-top:6px">【解析】${fmt(q.analysis)}</div>`:''}${extra}</div>`;
+  save();renderWrong();
+  $('#prRight').textContent=stt.right;$('#prWrongN').textContent=stt.wrongN;
+  $('#prNav').innerHTML=stt.i<stt.list.length-1
+    ?`<button class="btn primary" id="prNext">下一题 →</button>`
+    :`<button class="btn primary" id="prEnd">🏁 查看本次成绩</button>`;
+  $('#prNext')&&($('#prNext').onclick=()=>{stt.i++;renderPrCard()});
+  $('#prEnd')&&($('#prEnd').onclick=prSummary);
+}
+function prSummary(){
+  const stt=prState,total=stt.list.length;
+  const wrongs=stt.list.filter(q=>q.stats&&q.stats.w);
+  $('#prCard').innerHTML=`<div style="text-align:center;padding:20px 0">
+    <div style="font-size:42px">${total&&stt.right===total?'🏆':'💪'}</div>
+    <div style="font-size:20px;font-weight:700;margin:8px 0">答对 ${stt.right} / ${total} 题</div>
+    <div class="status">正确率 ${total?Math.round(stt.right/total*100):0}%${wrongs.length?`　·　答错的题已自动进入错题本并安排复习`:''}</div></div>`;
+  $('#prNav').innerHTML=`<button class="btn" id="prAgain">🔄 再来一轮</button><button class="btn primary" id="prBack">返回</button>`;
+  $('#prAgain').onclick=()=>{$('#prStart').click()};
+  $('#prBack').onclick=()=>{prState=null;$('#prSession').style.display='none';$('#prSetup').style.display='block';prRefreshSetup()};
+  $('#prPos').textContent=total;$('#prBar').style.width='100%';
+}
+/* 错题本里的今日待复习入口 */
+function dueCount(){return db.questions.filter(q=>q.wrong&&q.wrong.nextReview<=Date.now()).length}
+/* ---------- 题目分享图片（生成精美卡片图，可发微信群） ---------- */
+let _h2cLoading=null;
+function ensureH2C(){
+  if(window.html2canvas)return Promise.resolve();
+  if(!_h2cLoading){
+    const urls=['https://cdn.bootcdn.net/ajax/libs/html2canvas/1.4.1/html2canvas.min.js','https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js','https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js'];
+    _h2cLoading=(async()=>{for(const u of urls){try{await window.loadScript(u);if(window.html2canvas)return}catch(e){}}})();
+  }
+  return _h2cLoading.then(()=>{if(!window.html2canvas){_h2cLoading=null;throw new Error('分享图组件加载失败，请检查网络')}});
+}
+function buildShareCard(q){
+  const box=document.createElement('div');
+  box.style.cssText='position:fixed;left:-9999px;top:0;width:720px;background:#fff;padding:26px 30px;font-family:Microsoft YaHei,sans-serif;color:#1c1c1c;font-size:17px;line-height:1.9;box-sizing:border-box';
+  const tcol=q.type==='选择题'?'#16a34a':q.type==='填空题'?'#0ea5e9':q.type==='判断题'?'#f59e0b':'#8b5cf6';
+  const head=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+    <span style="background:${tcol};color:#fff;font-size:13px;padding:2px 10px;border-radius:6px">${esc(q.type)}</span>
+    ${q.grade?`<span style="font-size:13px;color:#888">${esc(q.grade)}${q.subject?' · '+esc(q.subject):''}</span>`:''}
+    ${q.difficulty?`<span style="font-size:13px;color:#888">难度：${esc(q.difficulty)}</span>`:''}</div>`;
+  const opts=q.options&&q.options.length?`<div style="margin:10px 0 4px">${q.options.map(o=>`<div style="margin:4px 0"><b>${esc(o.k)}.</b> ${esc(o.t)}</div>`).join('')}</div>`:'';
+  const imgs=q.images&&q.images.length?`<div style="margin:10px 0">${q.images.map(s=>`<img src="${s}" style="max-width:100%;max-height:300px;border-radius:8px">`).join('')}</div>`:'';
+  box.innerHTML=head+`<div style="font-size:18px;line-height:2;white-space:pre-wrap">${esc(q.stem)}</div>`+opts+imgs
+    +`<div style="margin-top:22px;padding-top:12px;border-top:1px solid #eee;display:flex;justify-content:space-between;align-items:center">
+      <span style="color:#16a34a;font-weight:700;font-size:14px">📚 我的AI题库</span>
+      <span style="color:#bbb;font-size:12px">${new Date().toLocaleDateString('zh-CN')}</span></div>`;
+  return box;
+}
+function imgsReady(box){const imgs=[...box.querySelectorAll('img')];return Promise.all(imgs.map(im=>im.complete?Promise.resolve():new Promise(r=>{im.onload=r;im.onerror=r})))}
+function dataURLtoBlob(u){const parts=u.split(',');const m=/:(.*?);/.exec(parts[0])[1];const bin=atob(parts[1]);const arr=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);return new Blob([arr],{type:m})}
+async function shareQ(id){
+  const q=db.questions.find(x=>x.id===id);if(!q)return;
+  openModal(`<h3>🖼 题目分享图</h3><div class="status" id="shStatus">正在生成图片…（首次需加载组件）</div><div id="shareImgBox"></div>
+   <div class="mfoot"><button class="btn" onclick="closeModal()">关闭</button><button class="btn primary" id="shSave" style="display:none">⬇ 下载图片</button></div>`,true);
+  try{
+    await ensureH2C();
+    const box=buildShareCard(q);
+    document.body.appendChild(box);
+    ktx(box);await imgsReady(box);await new Promise(r=>setTimeout(r,400));
+    const canvas=await html2canvas(box,{backgroundColor:'#ffffff',scale:2,useCORS:true});
+    const url=canvas.toDataURL('image/png');
+    box.remove();
+    $('#shareImgBox').innerHTML=`<img src="${url}"><div class="hint" style="text-align:center;margin-top:8px">手机上长按图片可保存转发；电脑点右下角「下载图片」</div>`;
+    $('#shStatus').textContent='生成完成 ✓（不含答案，适合发学生）';
+    $('#shSave').style.display='inline-block';
+    $('#shSave').onclick=()=>download(dataURLtoBlob(url),(q.grade||'')+(q.subject||'')+q.type+'题目.png');
+  }catch(e){$('#shStatus').textContent='生成失败：'+e.message}
+}
 /* ---------- 手动框选裁剪 ---------- */
 function openCropDialog(src,onCrop){
   openModal(`<h3>✂ 框选裁剪（抠图）</h3>
@@ -1399,6 +1636,7 @@ document.addEventListener('click',e=>{
   else if(act==='explain')aiExplain(id);
   else if(act==='wrong'||act==='editwrong')openWrongModal(id);
   else if(act==='master')masterQ(id);
+  else if(act==='share')shareQ(id);
   else if(act==='crop')openCropDialog(q.pageImg,d=>{(q.images=q.images||[]).push(d);save();renderBank();toast('已裁图并附到题目')});
 });
 $('#lightbox').onclick=()=>$('#lightbox').classList.remove('open');

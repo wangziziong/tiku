@@ -226,6 +226,17 @@ html.dark .prVerdict.bad{background:#2a1214;color:#f87171;border-color:#4a2426}
 /* 分享图片预览 */
 #shareImgBox{text-align:center}
 #shareImgBox img{max-width:100%;border:1px solid #e5eae7;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.1)}
+/* 统计图表 */
+.statrow{display:flex;align-items:center;gap:10px;margin:7px 0}
+.statlabel{width:96px;font-size:12px;color:#777;text-align:right;flex-shrink:0}
+.stattrack{flex:1;height:16px;background:#eef1ef;border-radius:8px;overflow:hidden}
+.statfill{height:100%;background:#16a34a;border-radius:8px;min-width:2px}
+.statnum{width:46px;font-size:12px;color:#555}
+.stattitle{font-weight:700;font-size:13px;margin:14px 0 6px;color:#333}
+html.dark .stattrack{background:#1d252d}
+html.dark .statlabel{color:#8a97a1}
+html.dark .statnum{color:#9aa7b0}
+html.dark .stattitle{color:#d5dde2}
 @media print{
  body>*{display:none!important}
  #printArea{display:block!important}
@@ -260,6 +271,10 @@ html.dark .prVerdict.bad{background:#2a1214;color:#f87171;border-color:#4a2426}
   <!-- 题库 -->
   <section id="view-bank" class="view active">
     <div class="statbar" id="statbar"></div>
+    <details class="setcard" id="statsBox" style="margin-bottom:14px">
+      <summary style="cursor:pointer;font-weight:700;font-size:14px">📊 统计分析（点开查看图表）</summary>
+      <div id="statsBody" style="margin-top:14px"></div>
+    </details>
     <div class="toolbar">
       <input id="kw" placeholder="🔍 搜索题干、答案、知识点…">
       <select id="fGrade"><option value="">全部年级</option></select>
@@ -269,6 +284,8 @@ html.dark .prVerdict.bad{background:#2a1214;color:#f87171;border-color:#4a2426}
       <button class="btn" id="btnAdd">＋ 新增题目</button>
       <button class="btn primary" id="btnUpload">📎 上传文件（照片/PDF/Word）</button>
       <button class="btn" id="btnBatch">⌨ 粘贴文本导入</button>
+      <button class="btn" id="btnExcel">⇅ Excel</button>
+      <button class="btn" id="btnDup">🧹 查重复</button>
     </div>
     <div id="qlist"></div>
   </section>
@@ -333,7 +350,7 @@ html.dark .prVerdict.bad{background:#2a1214;color:#f87171;border-color:#4a2426}
           <option>基础</option><option selected>中等</option><option>较难</option><option>挑战</option><option>混合难度</option>
         </select>
       </div>
-      <div><label>知识点（用逗号分隔，可留空）</label><input id="gPoint" placeholder="例如：一元一次方程, 应用题"></div>
+      <div><label>知识点（用逗号分隔，可留空）</label><input id="gPoint" list="kpList" placeholder="例如：一元一次方程, 应用题"></div>
       <div class="full"><label>题型与数量（勾选并填数量）</label>
         <div style="display:flex;gap:18px;flex-wrap:wrap" id="gTypes"></div>
       </div>
@@ -476,6 +493,7 @@ create policy "own delete" on public.tiku_data for delete using (auth.uid() = us
 <div id="printArea"></div>
 <div id="lightbox"><img id="lightboxImg" src="" alt=""></div>
 <div id="toast"></div>
+<datalist id="kpList"></datalist>
 
 <script>
 'use strict';
@@ -589,6 +607,7 @@ function renderBank(){
     <div class="stat" data-go="wrong"><b>${db.questions.filter(q=>q.wrong).length}</b><span>错题待巩固</span></div>
     <div class="stat" data-go="papers"><b>${db.papers.length}</b><span>已组试卷</span></div>`;
   $$('#statbar .stat').forEach(s=>s.onclick=()=>switchView(s.dataset.go));
+  renderStats();refreshKpList();
   $('#qlist').innerHTML=list.length?list.map(q=>qCard(q)).join(''):
     `<div class="empty">还没有符合条件的题目<br><br>点右上角「＋ 新增题目」手动录入，或用「批量导入」「AI图片识题」快速入库</div>`;
   ktx($('#qlist'));
@@ -616,7 +635,7 @@ function openEditModal(id){
     <div><label>年级</label><select id="eGrade">${GRADES.map(g=>`<option ${q&&q.grade===g?'selected':''}>${g}</option>`).join('')}<option value="" ${q&&!q.grade?'selected':''}>未设置</option></select></div>
     <div><label>学科</label><select id="eSubject">${SUBJECTS.map(s=>`<option ${q&&q.subject===s?'selected':''}>${s}</option>`).join('')}<option value="" ${q&&!q.subject?'selected':''}>未设置</option></select></div>
     <div><label>难度</label><select id="eDiff">${DIFFS.map(d=>`<option ${q&&q.difficulty===d?'selected':''}>${d}</option>`).join('')}</select></div>
-    <div class="full"><label>知识点（逗号分隔）</label><input id="eKnow" value="${esc(q?(q.knowledge||[]).join(','):'')}" placeholder="例如：一元一次方程, 应用题"></div>
+    <div class="full"><label>知识点（逗号分隔，输入时自动补全）</label><input id="eKnow" list="kpList" value="${esc(q?(q.knowledge||[]).join(','):'')}" placeholder="例如：一元一次方程, 应用题"></div>
     <div class="full"><label>题干（数学公式可用 LaTeX，如 $\\sqrt{2}$）</label><textarea id="eStem" rows="3">${esc(q?q.stem:'')}</textarea></div>
     <div class="full" id="eOptsWrap" style="display:none">${optionInputs(q?q.options:[])}</div>
     <div><label>答案</label><input id="eAns" value="${esc(q?q.answer:'')}" placeholder="如 B / 1 / 对"></div>
@@ -1650,6 +1669,8 @@ $('#fDiff').onchange=e=>{filters.diff=e.target.value;renderBank()};
 $('#btnAdd').onclick=()=>openEditModal(null);
 $('#btnUpload').onclick=openUploadModal;
 $('#btnBatch').onclick=openBatchModal;
+$('#btnExcel').onclick=openExcelModal;
+$('#btnDup').onclick=openDupModal;
 
 /* ---------- 设置 ---------- */
 function renderSettings(){
@@ -1951,7 +1972,155 @@ bindSync($('#syncPush'),syncPush);
 bindSync($('#syncMerge'),()=>syncPull('merge'));
 bindSync($('#syncReplace'),()=>syncPull('replace'));
 
-/* ---------- 深色模式 ---------- */
+/* ---------- 统计分析 / 重复检测 / Excel 导入导出 ---------- */
+function groupCount(arr){const m={};arr.filter(Boolean).forEach(k=>m[k]=(m[k]||0)+1);return Object.entries(m).sort((a,b)=>b[1]-a[1])}
+function barsHTML(title,pairs,total){
+  if(!pairs.length)return'';
+  const max=Math.max(...pairs.map(p=>p[1]),1);
+  return `<div class="stattitle">${title}</div>`+pairs.map(([k,n])=>`<div class="statrow"><div class="statlabel">${esc(k)}</div><div class="stattrack"><div class="statfill" style="width:${n/max*100}%"></div></div><div class="statnum">${n} 题</div></div>`).join('');
+}
+function renderStats(){
+  const box=$('#statsBody');if(!box)return;
+  const qs=db.questions;
+  const byType=groupCount(qs.map(q=>q.type));
+  const bySub=groupCount(qs.map(q=>q.subject).filter(Boolean)).slice(0,6);
+  const byDiff=groupCount(qs.map(q=>q.difficulty).filter(Boolean));
+  const byKp=groupCount(qs.flatMap(q=>q.knowledge||[])).slice(0,6);
+  const totals=qs.reduce((a,q)=>{const s=q.stats||{};a.a+=s.a||0;a.w+=s.w||0;return a},{a:0,w:0});
+  const rate=totals.a?Math.round((totals.a-totals.w)/totals.a*100)+'%':'—';
+  box.innerHTML=`<div class="stattitle">总览</div>
+    <div class="statrow"><div class="statlabel">题库总数</div><div class="statnum" style="width:auto;font-size:14px;color:#15803d;font-weight:700">${qs.length} 题</div></div>
+    <div class="statrow"><div class="statlabel">错题本</div><div class="statnum" style="width:auto;font-size:14px">${db.questions.filter(q=>q.wrong).length} 题</div></div>
+    <div class="statrow"><div class="statlabel">刷题累计</div><div class="statnum" style="width:auto;font-size:14px">答题 ${totals.a} 次，正确率 ${rate}</div></div>
+    ${barsHTML('题型分布',byType,qs.length)}
+    ${barsHTML('学科分布 Top6',bySub,qs.length)}
+    ${barsHTML('难度分布',byDiff,qs.length)}
+    ${barsHTML('知识点 Top6',byKp,qs.length)}`;
+}
+function refreshKpList(){
+  const set=new Set();db.questions.forEach(q=>(q.knowledge||[]).forEach(k=>set.add(k)));
+  $('#kpList').innerHTML=[...set].map(k=>`<option value="${esc(k)}">`).join('');
+}
+function findDupGroups(){
+  const map={};
+  db.questions.forEach(q=>{const k=(q.stem||'').replace(/\s+/g,'').slice(0,40);if(!k)return;(map[k]=map[k]||[]).push(q)});
+  return Object.values(map).filter(g=>g.length>1);
+}
+function openDupModal(){
+  const groups=findDupGroups();
+  if(!groups.length)return toast('题库很干净，没有发现重复题目 ✓');
+  let idx=0;
+  const html=groups.map(g=>{
+    idx++;
+    return `<div class="stattitle">组 ${idx}（${g.length} 道相同）</div>`+g.map((q,i)=>`
+      <div class="prevItem"><input type="checkbox" data-del="${q.id}" ${i>0?'checked':''}>
+      <div style="flex:1"><span class="badge ${TYPE_CLS[q.type]||'t1'}">${esc(q.type)}</span>
+      ${q.source?`<span class="chip src">${esc(q.source)}</span>`:''}
+      <div class="qstem" style="font-size:13px;margin-top:3px">${fmt(q.stem.slice(0,80))}</div></div></div>`).join('');
+  }).join('');
+  openModal(`<h3>🧹 重复题目检测</h3>
+    <div class="status">共发现 <b>${groups.length}</b> 组重复（按题干前 40 字判断）。已默认勾选每组保留第一道、其余删除，可自行调整后点删除。</div>
+    <div class="prevList" style="max-height:420px">${html}</div>
+    <div class="mfoot"><button class="btn" onclick="closeModal()">取消</button><button class="btn danger" id="dupDel">🗑 删除勾选的题目</button></div>`,true);
+  $('#dupDel').onclick=()=>{
+    const ids=$$('#modalBox input[data-del]').filter(c=>c.checked).map(c=>c.dataset.del);
+    if(!ids.length)return toast('没有勾选要删除的题');
+    if(!confirm(`确定删除 ${ids.length} 道重复题吗？`))return;
+    db.questions=db.questions.filter(q=>!ids.includes(q.id));
+    db.basket=db.basket.filter(x=>!ids.includes(x));
+    db.papers.forEach(p=>p.questionIds=p.questionIds.filter(x=>!ids.includes(x)));
+    save();renderBank();renderWrong();closeModal();toast(`已删除 ${ids.length} 道重复题`);
+  };
+}
+let _xlsxLoading=null;
+function ensureXLSX(){
+  if(window.XLSX)return Promise.resolve();
+  if(!_xlsxLoading){
+    const urls=['https://cdn.bootcdn.net/ajax/libs/xlsx/0.18.5/xlsx.full.min.js','https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js','https://registry.npmmirror.com/xlsx/0.18.5/files/xlsx.full.min.js','https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js'];
+    _xlsxLoading=(async()=>{for(const u of urls){try{await window.loadScript(u);if(window.XLSX)return}catch(e){}}})();
+  }
+  return _xlsxLoading.then(()=>{if(!window.XLSX){_xlsxLoading=null;throw new Error('Excel 组件加载失败，请检查网络')}});
+}
+const EXCEL_COLS=['题型','年级','学科','难度','知识点','题干','选项A','选项B','选项C','选项D','选项E','选项F','答案','解析','来源'];
+function qToRow(q){
+  const o={};const get=(a,b)=>a[b];
+  o['题型']=q.type;o['年级']=q.grade||'';o['学科']=q.subject||'';o['难度']=q.difficulty||'';
+  o['知识点']=(q.knowledge||[]).join('、');o['题干']=q.stem;
+  (q.options||[]).forEach(op=>{o['选项'+op.k]=op.t});
+  o['答案']=q.answer||'';o['解析']=q.analysis||'';o['来源']=q.source||'';
+  return o;
+}
+async function excelExport(){
+  try{
+    await ensureXLSX();
+    toast('正在生成 Excel…');
+    const rows=db.questions.map(qToRow);
+    const ws=XLSX.utils.json_to_sheet(rows,{header:EXCEL_COLS});
+    ws['!cols']=EXCEL_COLS.map(c=>({wch:c==='题干'?60:c==='解析'?50:12}));
+    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'题库');
+    XLSX.writeFile(wb,'我的题库-'+new Date().toISOString().slice(0,10)+'.xlsx');
+    toast(`已导出 ${rows.length} 道题到下载目录`);
+  }catch(e){toast('导出失败：'+e.message)}
+}
+async function excelImport(file,opts,onStatus){
+  await ensureXLSX();
+  onStatus=onStatus||(()=>{});
+  onStatus('解析 Excel 文件…');
+  const buf=await file.arrayBuffer();
+  const wb=XLSX.read(buf,{type:'array'});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+  if(!rows.length)throw new Error('表格里没有数据行');
+  const pick=(row,keys)=>{for(const k of Object.keys(row)){if(keys.some(x=>k.includes(x)))return String(row[k]).trim()}return''};
+  const grade=opts&&opts.grade,subject=opts&&opts.subject;
+  const items=[];
+  rows.forEach((row,i)=>{
+    const stem=pick(row,['题干','题目']);
+    if(!stem)return;
+    const options='ABCDEFG'.split('').map(L=>{const t=pick(row,['选项'+L,'选项 '+L]);return t?{k:L,t}:null}).filter(Boolean);
+    let type=pick(row,['题型']);
+    if(!type)type=options.length>=2?'选择题':(/_{2,}|（\s*）|\(\s*\)/.test(stem)?'填空题':/判断|对错/.test(stem)?'判断题':'解答题');
+    type=normType(type);
+    const kp=pick(row,['知识点']);
+    const q={type,stem,options,answer:pick(row,['答案']),analysis:pick(row,['解析']),
+      grade:pick(row,['年级'])||grade||'',subject:pick(row,['学科'])||subject||'',
+      difficulty:pick(row,['难度'])||'中等',knowledge:kp?kp.split(/[、,，;；]/).map(s=>s.trim()).filter(Boolean):[],
+      images:[],source:'Excel导入'};
+    items.push({q,page:null,orig:null,keepPage:false,fromDocx:true,rowNo:i+2});
+  });
+  if(!items.length)throw new Error('没有解析到带题干的行（检查表头是否包含"题干"）');
+  onStatus(`解析出 ${items.length} 道题`);
+  return items;
+}
+function openExcelModal(){
+  openModal(`<h3>⇅ Excel 导入 / 导出</h3>
+  <div class="setgrid">
+    <div class="full"><label>① 导出：把整个题库存成 Excel 表格（可留档、分享、再导入）</label>
+      <button class="btn primary" id="xlOut">⬇ 导出全部题目为 Excel</button></div>
+    <div class="full"><label>② 导入：选择 .xlsx 文件（表头需含「题干」，与导出格式一致即可循环使用）</label>
+      <input type="file" id="xlIn" accept=".xlsx,.xls" style="width:100%"></div>
+    <div><label>默认年级（表内未填时用）</label><select id="xlGrade">${GRADES.map(g=>`<option ${g==='初一'?'selected':''}>${g}</option>`).join('')}<option value="">不设置</option></select></div>
+    <div><label>默认学科</label><select id="xlSubject">${SUBJECTS.map(s=>`<option ${s==='数学'?'selected':''}>${s}</option>`).join('')}<option value="">不设置</option></select></div>
+  </div>
+  <div class="status" id="xlStatus"></div>
+  <div class="prevList" id="xlPrev" style="display:none"></div>
+  <div class="mfoot"><button class="btn" onclick="closeModal()">关闭</button><button class="btn primary" id="xlImport" style="display:none">✔ 导入勾选题目</button></div>`,true);
+  window._xlItems=[];
+  $('#xlOut').onclick=excelExport;
+  $('#xlIn').onchange=async e=>{
+    const f=e.target.files[0];if(!f)return;
+    $('#xlPrev').style.display='none';$('#xlImport').style.display='none';
+    try{
+      window._xlItems=await excelImport(f,{grade:$('#xlGrade').value,subject:$('#xlSubject').value},t=>{$('#xlStatus').textContent=t});
+      $('#xlStatus').textContent=`解析出 ${window._xlItems.length} 道题，勾选后导入：`;
+      $('#xlPrev').style.display='block';
+      $('#xlPrev').innerHTML=window._xlItems.map((it,i)=>prevItem(it.q,i)).join('');
+      $('#xlImport').style.display='inline-block';
+    }catch(err){$('#xlStatus').textContent='导入失败：'+err.message}
+    e.target.value='';
+  };
+  $('#xlImport').onclick=()=>importChecked(window._xlItems.map(it=>it.q),'Excel导入',{grade:$('#xlGrade').value,subject:$('#xlSubject').value},'#xlPrev');
+}
 function applyDark(){document.documentElement.classList.toggle('dark',!!db.settings.dark);const b=$('#darkBtn');if(b)b.textContent=db.settings.dark?'☀️':'🌙'}
 $('#darkBtn').onclick=()=>{db.settings.dark=!db.settings.dark;save();applyDark()};
 

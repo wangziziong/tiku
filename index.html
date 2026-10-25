@@ -277,26 +277,6 @@ details.kids .qcard{background:#fbfdfc;margin-top:8px}
     </div>
     <div class="setcard">
       <h3>👤 云账号（邮箱注册登录 · 换设备自动同步）</h3>
-      <div id="sbCfg">
-        <div class="setgrid">
-          <div class="full"><label>① Supabase 项目地址（在 supabase.com 免费建项目后，Settings → API 里复制）</label><input id="sSupaUrl" placeholder="https://xxxxx.supabase.co"></div>
-          <div class="full"><label>② Supabase anon public Key（同一页面复制）</label><input id="sSupaKey" type="password" placeholder="eyJhbGciOi 开头的一长串"></div>
-          <div class="full">
-            <details id="sbSqlBox"><summary>③ 点开：建表 SQL（复制到 Supabase「SQL Editor」运行一次即可）</summary>
-            <textarea id="sbSql" rows="9" readonly style="font-size:11px;font-family:Consolas,monospace">create table if not exists public.tiku_data (
-  user_id uuid primary key references auth.users on delete cascade,
-  data jsonb not null default '{}'::jsonb,
-  updated_at timestamptz not null default now()
-);
-alter table public.tiku_data enable row level security;
-create policy "own select" on public.tiku_data for select using (auth.uid() = user_id);
-create policy "own insert" on public.tiku_data for insert with check (auth.uid() = user_id);
-create policy "own update" on public.tiku_data for update using (auth.uid() = user_id);
-create policy "own delete" on public.tiku_data for delete using (auth.uid() = user_id);</textarea>
-            <div style="margin-top:6px"><button class="btn" id="sbCopySql">复制 SQL</button></div></details>
-          </div>
-        </div>
-      </div>
       <div id="sbAuth" style="display:none">
         <div class="setgrid" style="margin-top:4px">
           <div><label>邮箱</label><input id="sbEmail" type="email" placeholder="you@example.com"></div>
@@ -313,7 +293,28 @@ create policy "own delete" on public.tiku_data for delete using (auth.uid() = us
         </div>
       </div>
       <div class="status" id="sbMsg"></div>
-      <div class="hint">云服务用 Supabase 免费版：数据存在你自己的项目里（私有，别人看不到）。邮箱注册后需点确认邮件（注意查垃圾箱）。AI 配置也会跟着账号走，换设备登录后无需重填。</div>
+      <div class="hint">数据存在 Supabase 云端你自己的账号里（按账号严格隔离，别人看不到你的题库）。邮箱注册后需点确认邮件（注意查垃圾箱）。AI 配置也会跟着账号走，换设备登录后无需重填。</div>
+      <details id="sbCfg" style="margin-top:8px">
+        <summary>🔧 高级设置（云服务已配置好，一般不用展开）</summary>
+        <div class="setgrid" style="margin-top:8px">
+          <div class="full"><label>Supabase 项目地址</label><input id="sSupaUrl" placeholder="https://xxxxx.supabase.co"></div>
+          <div class="full"><label>Supabase 公开钥匙（anon/publishable Key——本就是设计为可公开的，配合行级安全规则使用，看到它也读不到你的数据）</label><input id="sSupaKey" type="password"></div>
+          <div class="full">
+            <details id="sbSqlBox"><summary>建表 SQL（仅新建 Supabase 项目时需要：复制到「SQL Editor」运行一次）</summary>
+            <textarea id="sbSql" rows="9" readonly style="font-size:11px;font-family:Consolas,monospace">create table if not exists public.tiku_data (
+  user_id uuid primary key references auth.users on delete cascade,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+alter table public.tiku_data enable row level security;
+create policy "own select" on public.tiku_data for select using (auth.uid() = user_id);
+create policy "own insert" on public.tiku_data for insert with check (auth.uid() = user_id);
+create policy "own update" on public.tiku_data for update using (auth.uid() = user_id);
+create policy "own delete" on public.tiku_data for delete using (auth.uid() = user_id);</textarea>
+            <div style="margin-top:6px"><button class="btn" id="sbCopySql">复制 SQL</button></div></details>
+          </div>
+        </div>
+      </details>
     </div>
     <div class="setcard">
       <h3>☁ 多设备同步（GitHub Gist 备用方案）</h3>
@@ -1597,7 +1598,7 @@ async function syncPush(){
   let res;
   if(s.gistId)res=await ghReq('PATCH','/gists/'+s.gistId,{files:{'tiku-data.json':{content}}});
   else{
-盘res=await ghReq('POST','/gists',{description:'我的AI题库-云端备份',public:false,files:{'tiku-data.json':{content}}});
+    res=await ghReq('POST','/gists',{description:'我的AI题库-云端备份',public:false,files:{'tiku-data.json':{content}}});
     s.gistId=res.id;
   }
   s.lastSync=new Date().toLocaleString('zh-CN');save();renderSync();
